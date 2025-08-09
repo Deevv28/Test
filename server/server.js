@@ -12,6 +12,7 @@ const bookingRoutes = require('./routes/bookings');
 const orderRoutes = require('./routes/orders');
 const adminRoutes = require('./routes/admin');
 const superAdminRoutes = require('./routes/superadmin');
+const tableRoutes = require('./routes/tables');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -78,6 +79,7 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/super-admin', superAdminRoutes);
+app.use('/api/tables', tableRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

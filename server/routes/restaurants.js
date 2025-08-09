@@ -55,9 +55,13 @@ router.get('/:id', async (req, res) => {
 
         // Get restaurant tables
         const tables = await db.all(`
-            SELECT id, table_number, capacity, status, type, features, image, x_position, y_position
+            SELECT 
+                rt.id, rt.table_number, rt.capacity, rt.status, rt.type, 
+                rt.features, rt.x_position, rt.y_position, rt.min_spend, rt.description,
+                ti.image_path as image
             FROM restaurant_tables 
-            WHERE restaurant_id = ?
+            LEFT JOIN table_images ti ON rt.id = ti.table_id AND ti.is_primary = 1
+            WHERE rt.restaurant_id = ?
             ORDER BY table_number
         `, [id]);
 
@@ -137,9 +141,13 @@ router.get('/:id/tables', async (req, res) => {
         }
 
         const tables = await db.all(`
-            SELECT id, table_number, capacity, status, type, features, image, x_position, y_position
+            SELECT 
+                rt.id, rt.table_number, rt.capacity, rt.status, rt.type, 
+                rt.features, rt.x_position, rt.y_position, rt.min_spend, rt.description,
+                ti.image_path as image
             FROM restaurant_tables 
-            WHERE restaurant_id = ?
+            LEFT JOIN table_images ti ON rt.id = ti.table_id AND ti.is_primary = 1
+            WHERE rt.restaurant_id = ?
             ORDER BY table_number
         `, [id]);
 
@@ -194,6 +202,59 @@ router.get('/:id/table-photos', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error while fetching table photos'
+        });
+    }
+});
+
+// GET /api/restaurants/:id/tables/:tableId/images - Get table images (public)
+router.get('/:id/tables/:tableId/images', async (req, res) => {
+    try {
+        const { id, tableId } = req.params;
+
+        // Verify restaurant exists
+        const restaurant = await db.get(
+            'SELECT id FROM restaurants WHERE id = ? AND is_active = 1',
+            [id]
+        );
+
+        if (!restaurant) {
+            return res.status(404).json({
+                success: false,
+                message: 'Restaurant not found'
+            });
+        }
+
+        // Verify table belongs to restaurant
+        const table = await db.get(
+            'SELECT id FROM restaurant_tables WHERE id = ? AND restaurant_id = ?',
+            [tableId, id]
+        );
+
+        if (!table) {
+            return res.status(404).json({
+                success: false,
+                message: 'Table not found'
+            });
+        }
+
+        const images = await db.all(`
+            SELECT id, image_path, description, is_primary, created_at
+            FROM table_images 
+            WHERE table_id = ? AND is_active = 1
+            ORDER BY is_primary DESC, created_at ASC
+        `, [tableId]);
+
+        res.status(200).json({
+            success: true,
+            message: 'Table images retrieved successfully',
+            data: images
+        });
+
+    } catch (error) {
+        console.error('Get table images error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching table images'
         });
     }
 });

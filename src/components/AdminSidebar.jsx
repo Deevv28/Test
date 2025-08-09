@@ -19,6 +19,7 @@ const AdminSidebar = () => {
 
   const menuItems = [
     { id: 'overview', label: 'Dashboard Overview', icon: LayoutDashboard, path: '/admin' },
+    { id: 'tables', label: 'Table Management', icon: Users, path: '/admin/tables' },
     { id: 'bookings', label: 'Table Booking', icon: Calendar, path: '/admin/bookings' },
     { id: 'orders', label: 'Order Management', icon: ShoppingBag, path: '/admin/orders' },
     { id: 'customers', label: 'Customer Data', icon: Users, path: '/admin/customers' },

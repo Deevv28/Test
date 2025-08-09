@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Calendar, Clock, Users, ArrowLeft, Check, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotification } from '../context/NotificationContext';
 
 
 function App() {
@@ -9,11 +10,12 @@ function App() {
   const [selectedTable, setSelectedTable] = useState(null);
   const [showImageView, setShowImageView] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [tablePhotos, setTablePhotos] = useState([]);
-  const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
+  const [tableTypes, setTableTypes] = useState([]);
+  const [isLoadingTables, setIsLoadingTables] = useState(true);
   const navigate = useNavigate();
   const { id } = useParams();
   const { apiCall } = useAuth();
+  const { addNotification } = useNotification();
   const [bookingData, setBookingData] = useState({
     date: '',
     time: '',
@@ -21,98 +23,122 @@ function App() {
     specialRequests: ''
   });
 
-  // Load table photos from admin uploads
+  // Load tables from backend
   React.useEffect(() => {
-    loadTablePhotos();
+    loadTables();
   }, []);
 
-  const loadTablePhotos = async () => {
-    setIsLoadingPhotos(true);
+  const loadTables = async () => {
+    setIsLoadingTables(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/restaurants/${id}/table-photos`);
-      const result = await response.json();
+      const response = await fetch(`http://localhost:5000/api/restaurants/${id}`);
+      const data = await response.json();
       
-      if (result.success) {
-        setTablePhotos(result.data);
-        // Update table types with real photos
-        updateTableTypesWithPhotos(result.data);
+      if (data.success) {
+        const restaurant = data.data;
+        const tablesWithImages = await Promise.all(
+          restaurant.tables.map(async (table) => {
+            try {
+              const imagesResponse = await fetch(`http://localhost:5000/api/restaurants/${id}/tables/${table.id}/images`);
+              const imagesData = await imagesResponse.json();
+              
+              const images = imagesData.success ? imagesData.data : [];
+              const gallery = images.map(img => `http://localhost:5000${img.image_path}`);
+              
+              return {
+                id: table.id,
+                name: getTableTypeName(table.type),
+                type: table.type,
+                capacity: table.capacity,
+                description: table.description || getDefaultDescription(table.type),
+                image: gallery[0] || getDefaultImage(table.type),
+                minSpend: `$${table.min_spend || 0}`,
+                features: table.features ? table.features.split(',').map(f => f.trim()) : getDefaultFeatures(table.type),
+                availableSlots: getAvailableSlots(),
+                gallery: gallery.length > 0 ? gallery : [getDefaultImage(table.type)],
+                table_number: table.table_number,
+                status: table.status
+              };
+            } catch (error) {
+              console.error('Error loading images for table:', table.id, error);
+              return {
+                id: table.id,
+                name: getTableTypeName(table.type),
+                type: table.type,
+                capacity: table.capacity,
+                description: table.description || getDefaultDescription(table.type),
+                image: getDefaultImage(table.type),
+                minSpend: `$${table.min_spend || 0}`,
+                features: table.features ? table.features.split(',').map(f => f.trim()) : getDefaultFeatures(table.type),
+                availableSlots: getAvailableSlots(),
+                gallery: [getDefaultImage(table.type)],
+                table_number: table.table_number,
+                status: table.status
+              };
+            }
+          })
+        );
+        
+        // Filter only available tables for customer booking
+        const availableTables = tablesWithImages.filter(table => table.status === 'available');
+        setTableTypes(availableTables);
       }
     } catch (error) {
-      console.error('Failed to load table photos:', error);
+      console.error('Failed to load tables:', error);
+      addNotification('Failed to load tables', 'error');
     } finally {
-      setIsLoadingPhotos(false);
+      setIsLoadingTables(false);
     }
   };
 
-  const updateTableTypesWithPhotos = (photos) => {
-    const photosByType = photos.reduce((acc, photo) => {
-      if (!acc[photo.table_type]) {
-        acc[photo.table_type] = [];
-      }
-      acc[photo.table_type].push(`http://localhost:5000${photo.photo_path}`);
-      return acc;
-    }, {});
-
-    // Update tableTypes with real photos
-    setTableTypes(prev => prev.map(table => ({
-      ...table,
-      gallery: photosByType[table.type] || table.gallery,
-      image: photosByType[table.type]?.[0] || table.image
-    })));
+  const getTableTypeName = (type) => {
+    const typeNames = {
+      couple: 'Couple Table',
+      family: 'Family Table', 
+      group: 'Large Group Table',
+      private: 'Private Dining',
+      outdoor: 'Outdoor Seating'
+    };
+    return typeNames[type] || 'Standard Table';
   };
 
-  // Table types with detailed information and updated gallery images
-  const [tableTypes, setTableTypes] = useState([
-    {
-      id: 1,
-      name: "Couple Table",
-      type: "couple",
-      capacity: 2,
-      description: "Perfect for intimate dining with stunning city views",
-      image: "https://images.pexels.com/photos/1395967/pexels-photo-1395967.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",
-      minSpend: "₹1,500",
-      features: ["Window view", "Romantic ambiance", "Perfect for couples"],
-      availableSlots: ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"],
-      gallery: [
-        "/couple 1.jpg",
-        "/couple 2.jpg",
-        "/couple 3.jpg",
-        "/couple 4.jpg",
-      ]
-    },
-    {
-      id: 2,
-      name: "Family Table",
-      type: "family",
-      capacity: 4,
-      description: "Spacious seating in the heart of the restaurant",
-      image: "https://images.pexels.com/photos/67468/pexels-photo-67468.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",
-      minSpend: "₹2,500",
-      features: ["Central location", "Great for families", "Vibrant atmosphere"],
-      availableSlots: ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"],
-      gallery: [
-        "/family 1.jpg",
-        "/family 2.jpg",
-        "/family 3.jpg",
-        "/family 4.jpg",
-      ]
-    },
-    {
-      id: 3,
-      name: "Large Group Table",
-      type: "group",
-      capacity: 6,
-      description: "Exclusive booth for special occasions and complete privacy",
-      image: "https://images.pexels.com/photos/262047/pexels-photo-262047.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",
-      minSpend: "₹4,000",
-      features: ["Complete privacy", "Premium service", "Special occasions"],
-      availableSlots: ["19:00", "19:30", "20:00", "20:30", "21:00", "21:30"],
-      gallery: [
-        "/group 1.jpg",
-        "/group 2.jpg",
-      ]
-    }
-  ]);
+  const getDefaultDescription = (type) => {
+    const descriptions = {
+      couple: 'Perfect for intimate dining with stunning views',
+      family: 'Spacious seating in the heart of the restaurant',
+      group: 'Exclusive seating for special occasions and complete privacy',
+      private: 'Private dining room for exclusive experiences',
+      outdoor: 'Beautiful outdoor seating with fresh air'
+    };
+    return descriptions[type] || 'Comfortable seating with great ambiance';
+  };
+
+  const getDefaultImage = (type) => {
+    const defaultImages = {
+      couple: 'https://images.pexels.com/photos/1395967/pexels-photo-1395967.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop',
+      family: 'https://images.pexels.com/photos/67468/pexels-photo-67468.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop',
+      group: 'https://images.pexels.com/photos/262047/pexels-photo-262047.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop',
+      private: 'https://images.pexels.com/photos/941861/pexels-photo-941861.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop',
+      outdoor: 'https://images.pexels.com/photos/776538/pexels-photo-776538.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop'
+    };
+    return defaultImages[type] || 'https://images.pexels.com/photos/67468/pexels-photo-67468.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop';
+  };
+
+  const getDefaultFeatures = (type) => {
+    const features = {
+      couple: ['Window view', 'Romantic ambiance', 'Perfect for couples'],
+      family: ['Central location', 'Great for families', 'Vibrant atmosphere'],
+      group: ['Complete privacy', 'Premium service', 'Special occasions'],
+      private: ['Exclusive dining', 'Private service', 'Luxury experience'],
+      outdoor: ['Fresh air', 'Garden view', 'Natural lighting']
+    };
+    return features[type] || ['Comfortable seating', 'Great service', 'Pleasant atmosphere'];
+  };
+
+  const getAvailableSlots = () => {
+    return ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"];
+  };
+
 
   const handleTableSelect = (table) => {
     setSelectedTable(table);
@@ -160,26 +186,43 @@ function App() {
   const handleBooking = (e) => {
     e.preventDefault();
     if (!selectedTable || !bookingData.date || !bookingData.time) {
-      alert('Please fill in all required fields');
+      addNotification('Please fill in all required fields', 'error');
       return;
     }
     
-    alert(`Table booked successfully!\n\nTable: ${selectedTable.name}\nDate: ${bookingData.date}\nTime: ${bookingData.time}\nGuests: ${bookingData.guests}`);
-
-
-    
-    // Reset form
-    setShowTableCards(true);
-    setShowImageView(false);
-    setSelectedTable(null);
-    setCurrentImageIndex(0);
-    setBookingData({
-      date: '',
-      time: '',
-      guests: 2,
-      specialRequests: ''
+    // Make booking API call
+    apiCall('/bookings', {
+      method: 'POST',
+      body: {
+        restaurantId: parseInt(id),
+        tableId: selectedTable.id,
+        date: bookingData.date,
+        time: bookingData.time,
+        guests: bookingData.guests,
+        specialRequests: bookingData.specialRequests
+      }
+    })
+    .then(response => {
+      if (response.success) {
+        addNotification('Table booked successfully!', 'success');
+        navigate('/dashboard');
+      }
+    })
+    .catch(error => {
+      addNotification(error.message || 'Failed to book table', 'error');
     });
   };
+
+  if (isLoadingTables) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading available tables...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Choose Your Table View
   if (!showImageView) {
@@ -213,8 +256,24 @@ function App() {
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Select Your Perfect Table</h2>
             <p className="text-gray-600 text-sm">Choose from our carefully curated seating options</p>
+            {tableTypes.length === 0 && (
+              <p className="text-amber-600 text-sm mt-2">No tables available for booking at the moment</p>
+            )}
           </div>
           
+          {tableTypes.length === 0 ? (
+            <div className="text-center py-12">
+              <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Available Tables</h3>
+              <p className="text-gray-600">All tables are currently booked. Please try a different date or contact the restaurant.</p>
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="mt-4 bg-gradient-to-r from-amber-600 to-orange-600 text-white py-2 px-6 rounded-lg hover:from-amber-700 hover:to-orange-700 transition-all duration-300"
+              >
+                Back to Restaurants
+              </button>
+            </div>
+          ) : (
           <div className="flex overflow-x-auto gap-4 px-2 snap-x snap-mandatory scroll-smooth">
             {tableTypes.map((tableType) => (
               <div key={tableType.id} className="bg-white rounded-2xl shadow-lg border min-w-[280px] max-w-xs snap-center shrink-0 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 aspect-[3/4]">
@@ -235,7 +294,7 @@ function App() {
 
                   <div className="absolute top-3 left-3">
                     <div className="bg-amber-500/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-xs font-medium">
-                      {tableType.gallery.length} photos
+                      {tableType.gallery?.length || 1} photos
                     </div>
                   </div>
                 </div>
@@ -245,6 +304,7 @@ function App() {
                     <div>
                       <h4 className="text-base font-bold text-gray-900 mb-1">{tableType.name}</h4>
                       <p className="text-gray-600 text-xs leading-relaxed">{tableType.description}</p>
+                      <p className="text-xs text-gray-500 mt-1">Table #{tableType.table_number}</p>
                     </div>
                     <div className="text-right ml-2">
                       <div className="text-sm font-bold text-green-600">{tableType.minSpend}</div>
@@ -271,6 +331,7 @@ function App() {
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
     );
@@ -336,13 +397,13 @@ function App() {
             
             {/* Enhanced Image Counter */}
             <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-sm font-medium border border-white/20">
-              {currentImageIndex + 1} / {selectedTable?.gallery?.length || 0}
+              {currentImageIndex + 1} / {selectedTable?.gallery?.length || 1}
             </div>
             
             {/* Enhanced Image Indicator Dots */}
             {selectedTable?.gallery && selectedTable.gallery.length > 1 && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex space-x-2 bg-black/30 backdrop-blur-sm px-3 py-2 rounded-full">
-                {selectedTable.gallery.map((_, index) => (
+                {selectedTable.gallery?.map((_, index) => (
                   <button
                     key={index}
                     onClick={() => goToImage(index)}
@@ -362,6 +423,7 @@ function App() {
             <div className="absolute bottom-4 left-4 right-20 text-white">
               <h2 className="text-xl font-bold mb-1 drop-shadow-lg">{selectedTable?.name}</h2>
               <p className="text-white/90 text-sm drop-shadow-md">{selectedTable?.description}</p>
+              <p className="text-white/80 text-xs drop-shadow-md mt-1">Table #{selectedTable?.table_number}</p>
             </div>
           </div>
         </div>
@@ -467,6 +529,10 @@ function App() {
               <div className="flex justify-between">
                 <span className="text-gray-600">Table Type:</span>
                 <span className="font-medium">{selectedTable?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Table Number:</span>
+                <span className="font-medium">#{selectedTable?.table_number}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Capacity:</span>

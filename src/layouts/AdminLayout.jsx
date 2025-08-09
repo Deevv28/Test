@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import AdminSidebar from '../components/AdminSidebar';
 import AdminOverview from '../pages/admin/AdminOverview';
+import AdminTables from '../pages/admin/AdminTables';
 import AdminBookings from '../pages/admin/AdminBookings';
 import AdminOrders from '../pages/admin/AdminOrders';
 import AdminCustomers from '../pages/admin/AdminCustomers';
@@ -17,6 +18,7 @@ const AdminLayout = () => {
       <div className="flex-1 p-8">
         <Routes>
           <Route path="/" element={<AdminOverview />} />
+          <Route path="/tables" element={<AdminTables />} />
           <Route path="/bookings" element={<AdminBookings />} />
           <Route path="/orders" element={<AdminOrders />} />
           <Route path="/customers" element={<AdminCustomers />} />

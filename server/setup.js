@@ -110,11 +110,27 @@ async function setupDatabase() {
                 status TEXT DEFAULT 'available',
                 type TEXT DEFAULT 'standard',
                 features TEXT,
-                image TEXT,
                 x_position INTEGER DEFAULT 0,
                 y_position INTEGER DEFAULT 0,
+            min_spend REAL DEFAULT 0,
+            description TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (restaurant_id) REFERENCES restaurants (id)
+            )
+        `);
+
+        // Create table_images table
+        db.run(`
+            CREATE TABLE IF NOT EXISTS table_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_id INTEGER NOT NULL,
+                image_path TEXT NOT NULL,
+                description TEXT,
+                is_primary BOOLEAN DEFAULT 0,
+                is_active BOOLEAN DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (table_id) REFERENCES restaurant_tables (id) ON DELETE CASCADE
             )
         `);
 
@@ -278,8 +294,8 @@ async function setupDatabase() {
         // Insert sample tables for each restaurant
         const tableStmt = db.prepare(`
             INSERT OR IGNORE INTO restaurant_tables 
-            (restaurant_id, table_number, capacity, status, type, features, image, x_position, y_position) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (restaurant_id, table_number, capacity, status, type, features, x_position, y_position, min_spend, description) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         for (let restaurantId = 1; restaurantId <= 3; restaurantId++) {
@@ -289,11 +305,12 @@ async function setupDatabase() {
                 const status = i <= tableCount * 0.6 ? 'available' : ['reserved', 'occupied', 'cleaning'][i % 3];
                 const x = (i % 5) * 18 + 10;
                 const y = Math.floor(i / 5) * 20 + 10;
-                const type = ['window', 'corner', 'center', 'private'][i % 4];
+                const type = ['couple', 'family', 'group', 'private'][i % 4];
                 const features = 'WiFi,Power Outlet,Premium View,Quiet Zone';
-                const image = 'https://images.pexels.com/photos/67468/pexels-photo-67468.jpeg?auto=compress&cs=tinysrgb&w=300&h=200&fit=crop&crop=center';
+                const minSpend = [15, 25, 40, 60][i % 4];
+                const description = `Perfect ${type} table with excellent ambiance and service`;
                 
-                tableStmt.run([restaurantId, i, capacity, status, type, features, image, x, y]);
+                tableStmt.run([restaurantId, i, capacity, status, type, features, x, y, minSpend, description]);
             }
         }
         tableStmt.finalize();
