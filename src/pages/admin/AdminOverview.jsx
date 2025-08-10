@@ -10,7 +10,10 @@ import {
   Clock,
   Star,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Table,
+  Plus,
+  Eye
 } from 'lucide-react';
 
 const AdminOverview = () => {
@@ -23,6 +26,7 @@ const AdminOverview = () => {
     recentBookings: [],
     todayStats: {}
   });
+  const [recentTables, setRecentTables] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -35,6 +39,12 @@ const AdminOverview = () => {
       const response = await apiCall('/admin/dashboard');
       if (response.success) {
         setDashboardData(response.data);
+      }
+
+      // Load recent tables
+      const tablesResponse = await apiCall('/admin/tables?limit=3');
+      if (tablesResponse.success) {
+        setRecentTables(tablesResponse.data);
       }
     } catch (error) {
       addNotification('Failed to load dashboard data', 'error');
@@ -197,6 +207,62 @@ const AdminOverview = () => {
             </div>
           </div>
         </div>
+
+        {/* Recent Tables */}
+        <div className="bg-white rounded-xl shadow-sm border">
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">Recent Tables</h3>
+              <span className="text-sm text-gray-500">Showing 3 most recent</span>
+            </div>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {recentTables.map((table) => (
+                <div key={table.id} className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="relative h-24 bg-gray-100">
+                    {table.primary_image ? (
+                      <img
+                        src={`http://localhost:5000${table.primary_image}`}
+                        alt={`Table ${table.table_number}`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Table className="w-6 h-6 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                      {table.image_count} photos
+                    </div>
+                  </div>
+                  
+                  <div className="p-3">
+                    <div className="flex justify-between items-center mb-1">
+                      <h4 className="font-semibold text-gray-900">Table {table.table_number}</h4>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        table.status === 'available' ? 'bg-green-100 text-green-800' :
+                        table.status === 'reserved' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {table.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">{table.capacity} seats • {table.type}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {recentTables.length === 0 && (
+              <div className="text-center py-8">
+                <Table className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h4 className="text-lg font-medium text-gray-900 mb-2">No tables created yet</h4>
+                <p className="text-gray-500">Create your first table to get started.</p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Quick Actions */}
@@ -212,8 +278,8 @@ const AdminOverview = () => {
             <p className="text-sm font-medium text-gray-700">Manage Bookings</p>
           </button>
           <button className="p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-green-500 hover:bg-green-50 transition-colors">
-            <TrendingUp className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-            <p className="text-sm font-medium text-gray-700">View Analytics</p>
+            <Table className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm font-medium text-gray-700">Add New Table</p>
           </button>
         </div>
       </div>

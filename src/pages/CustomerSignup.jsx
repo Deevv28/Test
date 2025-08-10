@@ -15,6 +15,7 @@ const CustomerSignup = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const navigate = useNavigate();
   const { addNotification } = useNotification();
@@ -29,6 +30,14 @@ const CustomerSignup = () => {
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
+    
+    // Clear field-specific errors
+    if (fieldErrors[name]) {
+      setFieldErrors(prev => ({
         ...prev,
         [name]: ''
       }));
@@ -99,8 +108,9 @@ const CustomerSignup = () => {
         addNotification('Account created successfully! Please sign in.', 'success');
         navigate('/login');
       } else {
-        if (result.message.includes('already exists')) {
-          setErrors({ email: 'User already exists with this email' });
+        if (result.field) {
+          // Set field-specific error
+          setFieldErrors({ [result.field]: result.message });
         } else {
           addNotification(result.message || 'Signup failed', 'error');
         }
@@ -174,6 +184,7 @@ const CustomerSignup = () => {
                   required
                 />
                 {errors.email && <p className="text-red-400 text-sm mt-1">{errors.email}</p>}
+                {fieldErrors.email && <p className="text-red-400 text-sm mt-1">{fieldErrors.email}</p>}
               </div>
 
               <div>
@@ -187,12 +198,14 @@ const CustomerSignup = () => {
                   value={formData.phone}
                   onChange={handleInputChange}
                   className={`w-full px-4 py-3 bg-white/10 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent backdrop-blur-sm ${
-                    errors.phone ? 'border-red-500' : 'border-white/20'
+                    errors.phone || fieldErrors.phone ? 'border-red-500' : 'border-white/20'
                   }`}
                   placeholder="+1 (555) 123-4567"
                   required
                 />
                 {errors.phone && <p className="text-red-400 text-sm mt-1">{errors.phone}</p>}
+                {fieldErrors.phone && <p className="text-red-400 text-sm mt-1">{fieldErrors.phone}</p>}
+                {fieldErrors.mobile && <p className="text-red-400 text-sm mt-1">{fieldErrors.mobile}</p>}
               </div>
 
               <div>

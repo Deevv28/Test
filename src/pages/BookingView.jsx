@@ -9,7 +9,7 @@ function App() {
   const [selectedTable, setSelectedTable] = useState(null);
   const [showImageView, setShowImageView] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [tablePhotos, setTablePhotos] = useState([]);
+  const [tables, setTables] = useState([]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const navigate = useNavigate();
   const { id } = useParams();
@@ -21,98 +21,75 @@ function App() {
     specialRequests: ''
   });
 
-  // Load table photos from admin uploads
+  // Load tables from backend
   React.useEffect(() => {
-    loadTablePhotos();
+    loadTables();
   }, []);
 
-  const loadTablePhotos = async () => {
+  const loadTables = async () => {
     setIsLoadingPhotos(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/restaurants/${id}/table-photos`);
+      const response = await fetch(`http://localhost:5000/api/restaurants/${id}/tables`);
       const result = await response.json();
       
       if (result.success) {
-        setTablePhotos(result.data);
-        // Update table types with real photos
-        updateTableTypesWithPhotos(result.data);
+        setTables(result.data);
       }
     } catch (error) {
-      console.error('Failed to load table photos:', error);
+      console.error('Failed to load tables:', error);
     } finally {
       setIsLoadingPhotos(false);
     }
   };
 
-  const updateTableTypesWithPhotos = (photos) => {
-    const photosByType = photos.reduce((acc, photo) => {
-      if (!acc[photo.table_type]) {
-        acc[photo.table_type] = [];
-      }
-      acc[photo.table_type].push(`http://localhost:5000${photo.photo_path}`);
-      return acc;
-    }, {});
+  // Convert backend table data to display format
+  const getTableDisplayData = (table) => {
+    const typeNames = {
+      couple: "Couple Table",
+      family: "Family Table", 
+      group: "Large Group Table",
+      private: "Private Dining",
+      outdoor: "Outdoor Seating",
+      bar: "Bar Seating"
+    };
 
-    // Update tableTypes with real photos
-    setTableTypes(prev => prev.map(table => ({
-      ...table,
-      gallery: photosByType[table.type] || table.gallery,
-      image: photosByType[table.type]?.[0] || table.image
-    })));
-  };
+    const minSpends = {
+      couple: "$25",
+      family: "$40", 
+      group: "$60",
+      private: "$80",
+      outdoor: "$30",
+      bar: "$20"
+    };
 
-  // Table types with detailed information and updated gallery images
-  const [tableTypes, setTableTypes] = useState([
-    {
-      id: 1,
-      name: "Couple Table",
-      type: "couple",
-      capacity: 2,
-      description: "Perfect for intimate dining with stunning city views",
-      image: "https://images.pexels.com/photos/1395967/pexels-photo-1395967.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",
-      minSpend: "₹1,500",
-      features: ["Window view", "Romantic ambiance", "Perfect for couples"],
-      availableSlots: ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"],
-      gallery: [
-        "/couple 1.jpg",
-        "/couple 2.jpg",
-        "/couple 3.jpg",
-        "/couple 4.jpg",
-      ]
-    },
-    {
-      id: 2,
-      name: "Family Table",
-      type: "family",
-      capacity: 4,
-      description: "Spacious seating in the heart of the restaurant",
-      image: "https://images.pexels.com/photos/67468/pexels-photo-67468.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",
-      minSpend: "₹2,500",
-      features: ["Central location", "Great for families", "Vibrant atmosphere"],
+    const descriptions = {
+      couple: "Perfect for intimate dining with romantic ambiance",
+      family: "Spacious seating ideal for family gatherings",
+      group: "Large table perfect for group celebrations",
+      private: "Exclusive private dining experience",
+      outdoor: "Fresh air dining with garden views",
+      bar: "Casual seating at our premium bar"
+    };
+
+    const features = table.features ? table.features.split(',').map(f => f.trim()) : [];
+    const gallery = table.images?.map(img => `http://localhost:5000${img.image_path}`) || [];
+    const primaryImage = table.primary_image ? `http://localhost:5000${table.primary_image}` : 
+                        (gallery[0] || "https://images.pexels.com/photos/67468/pexels-photo-67468.jpeg");
+
+    return {
+      id: table.id,
+      name: typeNames[table.type] || table.type,
+      type: table.type,
+      capacity: table.capacity,
+      description: descriptions[table.type] || "Comfortable seating for your dining experience",
+      image: primaryImage,
+      minSpend: minSpends[table.type] || "$30",
+      features: features.length > 0 ? features : ["Comfortable seating", "Great ambiance"],
       availableSlots: ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"],
-      gallery: [
-        "/family 1.jpg",
-        "/family 2.jpg",
-        "/family 3.jpg",
-        "/family 4.jpg",
-      ]
-    },
-    {
-      id: 3,
-      name: "Large Group Table",
-      type: "group",
-      capacity: 6,
-      description: "Exclusive booth for special occasions and complete privacy",
-      image: "https://images.pexels.com/photos/262047/pexels-photo-262047.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop",
-      minSpend: "₹4,000",
-      features: ["Complete privacy", "Premium service", "Special occasions"],
-      availableSlots: ["19:00", "19:30", "20:00", "20:30", "21:00", "21:30"],
-      gallery: [
-        "/group 1.jpg",
-        "/group 2.jpg",
-      ]
-    }
-  ]);
+      gallery: gallery,
+      table_number: table.table_number
+    };
+  };
 
   const handleTableSelect = (table) => {
     setSelectedTable(table);
@@ -216,26 +193,28 @@ function App() {
           </div>
           
           <div className="flex overflow-x-auto gap-4 px-2 snap-x snap-mandatory scroll-smooth">
-            {tableTypes.map((tableType) => (
-              <div key={tableType.id} className="bg-white rounded-2xl shadow-lg border min-w-[280px] max-w-xs snap-center shrink-0 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 aspect-[3/4]">
+            {tables.map((table) => {
+              const tableDisplay = getTableDisplayData(table);
+              return (
+              <div key={table.id} className="bg-white rounded-2xl shadow-lg border min-w-[280px] max-w-xs snap-center shrink-0 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 aspect-[3/4]">
                 <div className="relative">
                   <div className="h-40 overflow-hidden rounded-t-2xl">
                     <img
-                      src={tableType.image}
-                      alt={tableType.name}
+                      src={tableDisplay.image}
+                      alt={tableDisplay.name}
                       className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
                     />
                   </div>
                   
                   <div className="absolute top-3 right-3">
                     <div className="bg-black/70 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium">
-                      {tableType.capacity} seats
+                      {tableDisplay.capacity} seats
                     </div>
                   </div>
 
                   <div className="absolute top-3 left-3">
                     <div className="bg-amber-500/90 backdrop-blur-sm text-white px-2 py-1 rounded-full text-xs font-medium">
-                      {tableType.gallery.length} photos
+                      {tableDisplay.gallery.length} photos
                     </div>
                   </div>
                 </div>
@@ -243,17 +222,17 @@ function App() {
                 <div className="p-4 flex flex-col justify-between h-[calc(100%-10rem)]">
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <h4 className="text-base font-bold text-gray-900 mb-1">{tableType.name}</h4>
-                      <p className="text-gray-600 text-xs leading-relaxed">{tableType.description}</p>
+                      <h4 className="text-base font-bold text-gray-900 mb-1">{tableDisplay.name}</h4>
+                      <p className="text-gray-600 text-xs leading-relaxed">{tableDisplay.description}</p>
                     </div>
                     <div className="text-right ml-2">
-                      <div className="text-sm font-bold text-green-600">{tableType.minSpend}</div>
+                      <div className="text-sm font-bold text-green-600">{tableDisplay.minSpend}</div>
                       <div className="text-xs text-gray-500">min spend</div>
                     </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-1 mb-4">
-                    {tableType.features.map((feature, index) => (
+                    {tableDisplay.features.map((feature, index) => (
                       <span key={index} className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full font-medium">
                         {feature}
                       </span>
@@ -261,7 +240,7 @@ function App() {
                   </div>
                   
                   <button
-                    onClick={() => handleTableSelect(tableType)}
+                    onClick={() => handleTableSelect(tableDisplay)}
                     className="w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white py-2.5 px-4 rounded-xl hover:from-amber-700 hover:to-orange-700 transition-all duration-300 shadow-lg hover:shadow-xl font-semibold flex items-center justify-center space-x-2 text-sm transform hover:scale-105 active:scale-95"
                   >
                     <Eye className="w-4 h-4" />
@@ -269,8 +248,17 @@ function App() {
                   </button>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
+          
+          {tables.length === 0 && (
+            <div className="text-center py-12">
+              <Eye className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No tables available</h3>
+              <p className="text-gray-500">Please check back later or contact the restaurant.</p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -362,6 +350,7 @@ function App() {
             <div className="absolute bottom-4 left-4 right-20 text-white">
               <h2 className="text-xl font-bold mb-1 drop-shadow-lg">{selectedTable?.name}</h2>
               <p className="text-white/90 text-sm drop-shadow-md">{selectedTable?.description}</p>
+              <p className="text-white/80 text-xs drop-shadow-md">Table #{selectedTable?.table_number}</p>
             </div>
           </div>
         </div>
@@ -467,6 +456,10 @@ function App() {
               <div className="flex justify-between">
                 <span className="text-gray-600">Table Type:</span>
                 <span className="font-medium">{selectedTable?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Table Number:</span>
+                <span className="font-medium">#{selectedTable?.table_number}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Capacity:</span>
