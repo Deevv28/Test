@@ -219,15 +219,15 @@ async function setupDatabase() {
 
         // Create table_photos table
         db.run(`
-            CREATE TABLE IF NOT EXISTS table_photos (
+            CREATE TABLE IF NOT EXISTS table_images (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                restaurant_id INTEGER NOT NULL,
-                table_type TEXT NOT NULL,
-                photo_path TEXT NOT NULL,
+                table_id INTEGER NOT NULL,
+                image_path TEXT NOT NULL,
                 description TEXT,
+                is_primary BOOLEAN DEFAULT 0,
                 is_active BOOLEAN DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (restaurant_id) REFERENCES restaurants (id)
+                FOREIGN KEY (table_id) REFERENCES restaurant_tables (id)
             )
         `);
 

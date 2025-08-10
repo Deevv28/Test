@@ -37,16 +37,47 @@ router.post('/signup', async (req, res) => {
             });
         }
 
-        // Check if user already exists
-        const existingUser = await db.get(
-            'SELECT id FROM signup_users WHERE email = ?',
+        // Check if user already exists by email
+        const existingEmailUser = await db.get(
+            'SELECT id FROM login_users WHERE email = ?',
             [email]
         );
 
-        if (existingUser) {
+        if (existingEmailUser) {
             return res.status(400).json({
                 success: false,
-                message: 'User already exists, please sign in.'
+                message: 'User already exists, please sign in.',
+                field: 'email'
+            });
+        }
+
+        // Check if user already exists by mobile
+        if (mobile) {
+            const existingMobileUser = await db.get(
+                'SELECT id FROM login_users WHERE phone = ?',
+                [mobile]
+            );
+
+            if (existingMobileUser) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'User already exists with this mobile number, please sign in.',
+                    field: 'mobile'
+                });
+            }
+        }
+
+        // Check signup_users table as well
+        const existingSignupUser = await db.get(
+            'SELECT id FROM signup_users WHERE email = ? OR phone = ?',
+            [email, mobile || '']
+        );
+
+        if (existingSignupUser) {
+            return res.status(400).json({
+                success: false,
+                message: 'User already exists, please sign in.',
+                field: email ? 'email' : 'mobile'
             });
         }
 

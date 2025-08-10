@@ -12,7 +12,7 @@ const router = express.Router();
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        const uploadDir = path.join(__dirname, '..', 'uploads', 'photos');
+        const uploadDir = path.join(__dirname, '..', 'uploads', 'table-images');
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -20,7 +20,7 @@ const storage = multer.diskStorage({
     },
     filename: function (req, file, cb) {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'table-' + uniqueSuffix + path.extname(file.originalname));
+        cb(null, 'table-img-' + uniqueSuffix + path.extname(file.originalname));
     }
 });
 
@@ -43,6 +43,454 @@ const upload = multer({
 // Middleware to ensure admin access
 router.use(authenticateToken);
 router.use(authorizeRole(['admin']));
+
+// GET /api/admin/tables - Get restaurant tables
+router.get('/tables', async (req, res) => {
+    try {
+        const restaurantId = req.user.restaurant_id;
+        const { limit = 3 } = req.query; // Default to 3 for admin dashboard display
+
+        const tables = await db.all(`
+            SELECT 
+                rt.id, rt.table_number, rt.capacity, rt.status, rt.type, 
+                rt.features, rt.x_position, rt.y_position, rt.created_at,
+                COUNT(ti.id) as image_count,
+                MIN(ti.image_path) as thumbnail_image
+            FROM restaurant_tables rt
+            LEFT JOIN table_images ti ON rt.id = ti.table_id AND ti.is_active = 1
+            WHERE rt.restaurant_id = ?
+            GROUP BY rt.id
+            ORDER BY rt.created_at DESC
+            ${limit !== 'all' ? 'LIMIT ?' : ''}
+        `, limit !== 'all' ? [restaurantId, parseInt(limit)] : [restaurantId]);
+
+        // Get all images for each table
+        for (const table of tables) {
+            const images = await db.all(`
+                SELECT id, image_path, description, is_primary, created_at
+                FROM table_images 
+                WHERE table_id = ? AND is_active = 1
+                ORDER BY is_primary DESC, created_at ASC
+            `, [table.id]);
+            table.images = images;
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Tables retrieved successfully',
+            data: tables
+        });
+
+    } catch (error) {
+        console.error('Get admin tables error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching tables'
+        });
+    }
+});
+
+// POST /api/admin/tables - Create new table
+router.post('/tables', [
+    body('table_number').isInt({ min: 1 }).withMessage('Valid table number is required'),
+    body('capacity').isInt({ min: 1, max: 20 }).withMessage('Capacity must be between 1 and 20'),
+    body('type').isLength({ min: 1, max: 50 }).withMessage('Table type is required'),
+    body('features').optional().isLength({ max: 500 }).withMessage('Features must be less than 500 characters'),
+    body('x_position').optional().isInt().withMessage('X position must be a number'),
+    body('y_position').optional().isInt().withMessage('Y position must be a number')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                errors: errors.array()
+            });
+        }
+
+        const restaurantId = req.user.restaurant_id;
+        const { table_number, capacity, type, features, x_position, y_position } = req.body;
+
+        // Check if table number already exists for this restaurant
+        const existingTable = await db.get(
+            'SELECT id FROM restaurant_tables WHERE restaurant_id = ? AND table_number = ?',
+            [restaurantId, table_number]
+        );
+
+        if (existingTable) {
+            return res.status(400).json({
+                success: false,
+                message: 'Table number already exists'
+            });
+        }
+
+        const result = await db.run(`
+            INSERT INTO restaurant_tables (restaurant_id, table_number, capacity, type, features, x_position, y_position, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'available')
+        `, [restaurantId, table_number, capacity, type, features || null, x_position || 0, y_position || 0]);
+
+        console.log(`✅ Table created: Table ${table_number} by Admin ${req.user.id}`);
+
+        res.status(201).json({
+            success: true,
+            message: 'Table created successfully',
+            data: {
+                id: result.id,
+                table_number,
+                capacity,
+                type
+            }
+        });
+
+    } catch (error) {
+        console.error('Create table error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while creating table'
+        });
+    }
+});
+
+// PUT /api/admin/tables/:id - Update table
+router.put('/tables/:id', [
+    body('table_number').optional().isInt({ min: 1 }).withMessage('Valid table number is required'),
+    body('capacity').optional().isInt({ min: 1, max: 20 }).withMessage('Capacity must be between 1 and 20'),
+    body('type').optional().isLength({ min: 1, max: 50 }).withMessage('Table type is required'),
+    body('features').optional().isLength({ max: 500 }).withMessage('Features must be less than 500 characters'),
+    body('status').optional().isIn(['available', 'reserved', 'occupied', 'cleaning']).withMessage('Invalid status'),
+    body('x_position').optional().isInt().withMessage('X position must be a number'),
+    body('y_position').optional().isInt().withMessage('Y position must be a number')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Validation failed',
+                errors: errors.array()
+            });
+        }
+
+        const { id } = req.params;
+        const restaurantId = req.user.restaurant_id;
+
+        // Check if table exists and belongs to admin's restaurant
+        const existingTable = await db.get(
+            'SELECT id FROM restaurant_tables WHERE id = ? AND restaurant_id = ?',
+            [id, restaurantId]
+        );
+
+        if (!existingTable) {
+            return res.status(404).json({
+                success: false,
+                message: 'Table not found'
+            });
+        }
+
+        // Build update query dynamically
+        const updateFields = [];
+        const updateValues = [];
+
+        const allowedFields = ['table_number', 'capacity', 'type', 'features', 'status', 'x_position', 'y_position'];
+        
+        for (const field of allowedFields) {
+            if (req.body.hasOwnProperty(field)) {
+                updateFields.push(`${field} = ?`);
+                updateValues.push(req.body[field]);
+            }
+        }
+
+        if (updateFields.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No valid fields to update'
+            });
+        }
+
+        updateValues.push(id);
+
+        await db.run(
+            `UPDATE restaurant_tables SET ${updateFields.join(', ')} WHERE id = ?`,
+            updateValues
+        );
+
+        console.log(`✅ Table updated: ID ${id} by Admin ${req.user.id}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'Table updated successfully'
+        });
+
+    } catch (error) {
+        console.error('Update table error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while updating table'
+        });
+    }
+});
+
+// DELETE /api/admin/tables/:id - Delete table
+router.delete('/tables/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const restaurantId = req.user.restaurant_id;
+
+        // Check if table has any active bookings
+        const activeBookings = await db.get(
+            'SELECT COUNT(*) as count FROM bookings WHERE table_id = ? AND status = "confirmed" AND date >= date("now")',
+            [id]
+        );
+
+        if (activeBookings.count > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot delete table with active bookings'
+            });
+        }
+
+        // Delete table images first
+        const tableImages = await db.all(
+            'SELECT image_path FROM table_images WHERE table_id = ?',
+            [id]
+        );
+
+        for (const image of tableImages) {
+            const filePath = path.join(__dirname, '..', image.image_path);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
+
+        await db.run('DELETE FROM table_images WHERE table_id = ?', [id]);
+
+        const result = await db.run(
+            'DELETE FROM restaurant_tables WHERE id = ? AND restaurant_id = ?',
+            [id, restaurantId]
+        );
+
+        if (result.changes === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Table not found'
+            });
+        }
+
+        console.log(`✅ Table deleted: ID ${id} by Admin ${req.user.id}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'Table deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('Delete table error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while deleting table'
+        });
+    }
+});
+
+// POST /api/admin/tables/:id/images - Upload table images
+router.post('/tables/:id/images', upload.array('images', 10), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const restaurantId = req.user.restaurant_id;
+        const { descriptions = [] } = req.body;
+
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'At least one image file is required'
+            });
+        }
+
+        // Check if table exists and belongs to admin's restaurant
+        const table = await db.get(
+            'SELECT id FROM restaurant_tables WHERE id = ? AND restaurant_id = ?',
+            [id, restaurantId]
+        );
+
+        if (!table) {
+            return res.status(404).json({
+                success: false,
+                message: 'Table not found'
+            });
+        }
+
+        // Check if this is the first image for the table (will be primary)
+        const existingImages = await db.get(
+            'SELECT COUNT(*) as count FROM table_images WHERE table_id = ? AND is_active = 1',
+            [id]
+        );
+
+        const isFirstImage = existingImages.count === 0;
+        const uploadedImages = [];
+
+        for (let i = 0; i < req.files.length; i++) {
+            const file = req.files[i];
+            const imagePath = `/uploads/table-images/${file.filename}`;
+            const description = Array.isArray(descriptions) ? descriptions[i] : descriptions;
+            const isPrimary = isFirstImage && i === 0; // First uploaded image becomes primary
+
+            const result = await db.run(`
+                INSERT INTO table_images (table_id, image_path, description, is_primary, is_active)
+                VALUES (?, ?, ?, ?, 1)
+            `, [id, imagePath, description || null, isPrimary]);
+
+            uploadedImages.push({
+                id: result.id,
+                image_path: imagePath,
+                description,
+                is_primary: isPrimary
+            });
+        }
+
+        console.log(`✅ Table images uploaded: ${req.files.length} images for table ${id} by Admin ${req.user.id}`);
+
+        res.status(201).json({
+            success: true,
+            message: `${req.files.length} image(s) uploaded successfully`,
+            data: uploadedImages
+        });
+
+    } catch (error) {
+        console.error('Upload table images error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while uploading images'
+        });
+    }
+});
+
+// DELETE /api/admin/tables/:tableId/images/:imageId - Delete table image
+router.delete('/tables/:tableId/images/:imageId', async (req, res) => {
+    try {
+        const { tableId, imageId } = req.params;
+        const restaurantId = req.user.restaurant_id;
+
+        // Verify table belongs to admin's restaurant
+        const table = await db.get(
+            'SELECT id FROM restaurant_tables WHERE id = ? AND restaurant_id = ?',
+            [tableId, restaurantId]
+        );
+
+        if (!table) {
+            return res.status(404).json({
+                success: false,
+                message: 'Table not found'
+            });
+        }
+
+        // Get image details
+        const image = await db.get(
+            'SELECT image_path, is_primary FROM table_images WHERE id = ? AND table_id = ?',
+            [imageId, tableId]
+        );
+
+        if (!image) {
+            return res.status(404).json({
+                success: false,
+                message: 'Image not found'
+            });
+        }
+
+        // Delete from database
+        await db.run(
+            'UPDATE table_images SET is_active = 0 WHERE id = ?',
+            [imageId]
+        );
+
+        // If this was the primary image, make the next image primary
+        if (image.is_primary) {
+            const nextImage = await db.get(
+                'SELECT id FROM table_images WHERE table_id = ? AND is_active = 1 AND id != ? ORDER BY created_at ASC LIMIT 1',
+                [tableId, imageId]
+            );
+            
+            if (nextImage) {
+                await db.run(
+                    'UPDATE table_images SET is_primary = 1 WHERE id = ?',
+                    [nextImage.id]
+                );
+            }
+        }
+
+        // Delete file from filesystem
+        const filePath = path.join(__dirname, '..', image.image_path);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+
+        console.log(`✅ Table image deleted: Image ${imageId} from table ${tableId} by Admin ${req.user.id}`);
+
+        res.status(200).json({
+            success: true,
+            message: 'Image deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('Delete table image error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while deleting image'
+        });
+    }
+});
+
+// PUT /api/admin/tables/:tableId/images/:imageId/primary - Set image as primary
+router.put('/tables/:tableId/images/:imageId/primary', async (req, res) => {
+    try {
+        const { tableId, imageId } = req.params;
+        const restaurantId = req.user.restaurant_id;
+
+        // Verify table belongs to admin's restaurant
+        const table = await db.get(
+            'SELECT id FROM restaurant_tables WHERE id = ? AND restaurant_id = ?',
+            [tableId, restaurantId]
+        );
+
+        if (!table) {
+            return res.status(404).json({
+                success: false,
+                message: 'Table not found'
+            });
+        }
+
+        // Remove primary status from all images for this table
+        await db.run(
+            'UPDATE table_images SET is_primary = 0 WHERE table_id = ?',
+            [tableId]
+        );
+
+        // Set new primary image
+        const result = await db.run(
+            'UPDATE table_images SET is_primary = 1 WHERE id = ? AND table_id = ?',
+            [imageId, tableId]
+        );
+
+        if (result.changes === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Image not found'
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Primary image updated successfully'
+        });
+
+    } catch (error) {
+        console.error('Set primary image error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while setting primary image'
+        });
+    }
+});
 
 // GET /api/admin/restaurant - Get admin's restaurant details
 router.get('/restaurant', async (req, res) => {
@@ -504,128 +952,6 @@ router.get('/bookings', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error while fetching bookings'
-        });
-    }
-});
-
-// GET /api/admin/table-photos - Get table photos for admin's restaurant
-router.get('/table-photos', async (req, res) => {
-    try {
-        const restaurantId = req.user.restaurant_id;
-
-        const photos = await db.all(`
-            SELECT id, table_type, photo_path, description, is_active, created_at
-            FROM table_photos 
-            WHERE restaurant_id = ? AND is_active = 1
-            ORDER BY table_type, created_at DESC
-        `, [restaurantId]);
-
-        res.status(200).json({
-            success: true,
-            message: 'Table photos retrieved successfully',
-            data: photos
-        });
-
-    } catch (error) {
-        console.error('Get table photos error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error while fetching table photos'
-        });
-    }
-});
-
-// POST /api/admin/table-photos - Upload table photo
-router.post('/table-photos', upload.single('photo'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                message: 'Photo file is required'
-            });
-        }
-
-        const { table_type, description } = req.body;
-        const restaurantId = req.user.restaurant_id;
-        const photoPath = `/uploads/photos/${req.file.filename}`;
-
-        if (!table_type) {
-            return res.status(400).json({
-                success: false,
-                message: 'Table type is required'
-            });
-        }
-
-        const result = await db.run(`
-            INSERT INTO table_photos (restaurant_id, table_type, photo_path, description)
-            VALUES (?, ?, ?, ?)
-        `, [restaurantId, table_type, photoPath, description || null]);
-
-        console.log(`✅ Table photo uploaded: ${table_type} by Admin ${req.user.id}`);
-
-        res.status(201).json({
-            success: true,
-            message: 'Table photo uploaded successfully',
-            data: {
-                id: result.id,
-                table_type,
-                photo_path: photoPath,
-                description
-            }
-        });
-
-    } catch (error) {
-        console.error('Upload table photo error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error while uploading photo'
-        });
-    }
-});
-
-// DELETE /api/admin/table-photos/:id - Delete table photo
-router.delete('/table-photos/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const restaurantId = req.user.restaurant_id;
-
-        // Get photo details
-        const photo = await db.get(
-            'SELECT photo_path FROM table_photos WHERE id = ? AND restaurant_id = ?',
-            [id, restaurantId]
-        );
-
-        if (!photo) {
-            return res.status(404).json({
-                success: false,
-                message: 'Photo not found'
-            });
-        }
-
-        // Delete from database
-        await db.run(
-            'DELETE FROM table_photos WHERE id = ? AND restaurant_id = ?',
-            [id, restaurantId]
-        );
-
-        // Delete file from filesystem
-        const filePath = path.join(__dirname, '..', photo.photo_path);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-        }
-
-        console.log(`✅ Table photo deleted: ID ${id} by Admin ${req.user.id}`);
-
-        res.status(200).json({
-            success: true,
-            message: 'Table photo deleted successfully'
-        });
-
-    } catch (error) {
-        console.error('Delete table photo error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error while deleting photo'
         });
     }
 });
