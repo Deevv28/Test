@@ -18,8 +18,16 @@ export const DataProvider = ({ children }) => {
   const [bookings, setBookings] = useState([]);
   const [cart, setCart] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [lastFetch, setLastFetch] = useState({
+    restaurants: 0,
+    orders: 0,
+    bookings: 0
+  });
   const [dataLoaded, setDataLoaded] = useState(false);
   const { apiCall, isAuthenticated, authChecked, token } = useAuth();
+  
+  // Cache duration in milliseconds (5 minutes)
+  const CACHE_DURATION = 5 * 60 * 1000;
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -29,9 +37,14 @@ export const DataProvider = ({ children }) => {
         const storedOrders = localStorage.getItem('orders');
         const storedBookings = localStorage.getItem('bookings');
         const storedCart = localStorage.getItem('cart');
+        const storedLastFetch = localStorage.getItem('lastFetch');
         
         if (storedRestaurants) {
-          setRestaurants(JSON.parse(storedRestaurants));
+          const parsedRestaurants = JSON.parse(storedRestaurants);
+          setRestaurants(parsedRestaurants);
+          if (parsedRestaurants.length > 0) {
+            setDataLoaded(true);
+          }
         }
         if (storedOrders) {
           setOrders(JSON.parse(storedOrders));
@@ -41,6 +54,9 @@ export const DataProvider = ({ children }) => {
         }
         if (storedCart) {
           setCart(JSON.parse(storedCart));
+        }
+        if (storedLastFetch) {
+          setLastFetch(JSON.parse(storedLastFetch));
         }
         
         console.log('📦 Data restored from localStorage');
@@ -54,37 +70,50 @@ export const DataProvider = ({ children }) => {
 
   // Save data to localStorage whenever it changes
   useEffect(() => {
-    if (restaurants.length > 0) {
-      localStorage.setItem('restaurants', JSON.stringify(restaurants));
-    }
+    localStorage.setItem('restaurants', JSON.stringify(restaurants));
   }, [restaurants]);
 
   useEffect(() => {
-    if (orders.length > 0) {
-      localStorage.setItem('orders', JSON.stringify(orders));
-    }
+    localStorage.setItem('orders', JSON.stringify(orders));
   }, [orders]);
 
   useEffect(() => {
-    if (bookings.length > 0) {
-      localStorage.setItem('bookings', JSON.stringify(bookings));
-    }
+    localStorage.setItem('bookings', JSON.stringify(bookings));
   }, [bookings]);
 
   useEffect(() => {
     localStorage.setItem('cart', JSON.stringify(cart));
   }, [cart]);
+  
+  useEffect(() => {
+    localStorage.setItem('lastFetch', JSON.stringify(lastFetch));
+  }, [lastFetch]);
+  
   // Load restaurants from API
-  const loadRestaurants = async () => {
+  const loadRestaurants = async (force = false) => {
+    // Check if we need to fetch (cache is expired or force refresh)
+    const now = Date.now();
+    const shouldFetch = force || 
+                       !dataLoaded || 
+                       restaurants.length === 0 || 
+                       (now - lastFetch.restaurants) > CACHE_DURATION;
+    
+    if (!shouldFetch) {
+      console.log('📦 Using cached restaurants data');
+      return;
+    }
+    
     setIsLoading(true);
     try {
       const result = await apiCall('/restaurants');
       if (result && result.success) {
         setRestaurants(result.data);
+        setLastFetch(prev => ({ ...prev, restaurants: now }));
         setDataLoaded(true);
         console.log('🏪 Restaurants loaded from API');
       } else if (result && result.data) {
         setRestaurants(result.data);
+        setLastFetch(prev => ({ ...prev, restaurants: now }));
         setDataLoaded(true);
       }
     } catch (error) {
@@ -133,32 +162,24 @@ export const DataProvider = ({ children }) => {
             available_tables: 10
           }
         ]);
+        setDataLoaded(true);
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Load restaurants when authentication is ready
-  React.useEffect(() => {
+  // Load restaurants only once when authentication is ready
+  useEffect(() => {
     if (authChecked) {
       loadRestaurants();
-      
-      // Set up periodic refresh only if authenticated
-      let interval;
-      if (isAuthenticated && token) {
-        interval = setInterval(() => {
-          loadRestaurants();
-        }, 30000); // Refresh every 30 seconds
-      }
-      return () => clearInterval(interval);
     }
-  }, [authChecked, isAuthenticated, token]);
+  }, [authChecked]);
   
   // Force reload restaurants data
   const forceLoadRestaurants = async () => {
     console.log('🔄 Force reloading restaurants data...');
-    await loadRestaurants();
+    await loadRestaurants(true);
   };
 
   // Admin functionality
@@ -198,13 +219,22 @@ export const DataProvider = ({ children }) => {
     }));
   };
 
-  const loadUserOrders = async () => {
+  const loadUserOrders = async (force = false) => {
     if (!isAuthenticated || !token) return;
+    
+    const now = Date.now();
+    const shouldFetch = force || (now - lastFetch.orders) > CACHE_DURATION;
+    
+    if (!shouldFetch && orders.length > 0) {
+      console.log('📦 Using cached orders data');
+      return;
+    }
     
     try {
       const result = await apiCall('/orders');
       if (result && result.success) {
         setOrders(result.data);
+        setLastFetch(prev => ({ ...prev, orders: now }));
         console.log('📋 Orders loaded from API');
       }
     } catch (error) {
@@ -212,13 +242,22 @@ export const DataProvider = ({ children }) => {
     }
   };
 
-  const loadUserBookings = async () => {
+  const loadUserBookings = async (force = false) => {
     if (!isAuthenticated || !token) return;
+    
+    const now = Date.now();
+    const shouldFetch = force || (now - lastFetch.bookings) > CACHE_DURATION;
+    
+    if (!shouldFetch && bookings.length > 0) {
+      console.log('📦 Using cached bookings data');
+      return;
+    }
     
     try {
       const result = await apiCall('/bookings');
       if (result && result.success) {
         setBookings(result.data);
+        setLastFetch(prev => ({ ...prev, bookings: now }));
         console.log('📅 Bookings loaded from API');
       }
     } catch (error) {

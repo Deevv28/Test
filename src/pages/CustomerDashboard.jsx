@@ -13,18 +13,15 @@ const CustomerDashboard = () => {
   const [selectedCuisine, setSelectedCuisine] = useState('all');
   const [favorites, setFavorites] = useState([]);
 
-  // Refresh restaurants data periodically
+  // Load data only once when component mounts
   React.useEffect(() => {
-    loadUserOrders();
-    loadUserBookings();
-    // Force load restaurants on mount to ensure fresh data
-    loadRestaurants();
-    
-    const interval = setInterval(() => {
+    // Only load if user is authenticated and data isn't already loaded
+    if (user && !dataLoaded) {
+      loadUserOrders();
+      loadUserBookings();
       loadRestaurants();
-    }, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
+    }
+  }, [user, dataLoaded]);
 
   const cuisines = ['all', 'Fine Dining', 'Japanese', 'Italian', 'Indian', 'Mexican'];
 

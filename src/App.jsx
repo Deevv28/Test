@@ -17,6 +17,7 @@ import { AuthProvider } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { NotificationProvider } from './context/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import DataPersistence from './components/DataPersistence';
 import { useAuth } from './context/AuthContext';
 
 // App content component that uses auth context
@@ -47,6 +48,7 @@ const AppContent = () => {
   return (
     <Router>
       <div className="min-h-screen bg-gray-50">
+        <DataPersistence />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<CustomerLogin />} />

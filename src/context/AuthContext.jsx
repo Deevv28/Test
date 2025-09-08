@@ -93,6 +93,11 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('user');
     localStorage.removeItem('role');
     localStorage.removeItem('token');
+    // Clear data cache on logout
+    localStorage.removeItem('restaurants');
+    localStorage.removeItem('orders');
+    localStorage.removeItem('bookings');
+    localStorage.removeItem('lastFetch');
   };
 
   // API helper function
@@ -128,7 +133,10 @@ export const AuthProvider = ({ children }) => {
       }
       
       const data = await response.json();
-      console.log(`✅ API call successful: ${endpoint}`, data.success ? 'Success' : 'Failed');
+      // Reduce console noise - only log important API calls
+      if (!endpoint.includes('/restaurants') || endpoint.includes('/admin/')) {
+        console.log(`✅ API call successful: ${endpoint}`, data.success ? 'Success' : 'Failed');
+      }
       return data;
     } catch (error) {
       // Handle network connection errors

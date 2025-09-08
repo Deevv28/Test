@@ -148,6 +148,30 @@ npm run backend:python
 
 ## 🔧 Development
 
+### Important Notes
+
+#### React StrictMode and Duplicate API Calls
+
+In development mode, you may notice API calls appearing twice in the backend logs. This is due to React's StrictMode, which intentionally double-executes components to detect side effects. This behavior:
+
+- **Only happens in development** - Production builds run components once
+- **Is intentional React behavior** - Helps catch bugs and side effects
+- **Can be safely ignored** - The duplicate calls don't affect functionality
+- **Is prevented by caching** - Our app implements smart caching to minimize actual network requests
+
+To verify this won't happen in production:
+1. Run `npm run build` to create a production build
+2. Run `npm run preview` to test the production build
+3. Check that API calls only happen once in production
+
+#### Data Persistence
+
+The application now includes smart data persistence:
+- **Automatic caching** - Data is cached in localStorage for 5 minutes
+- **Survives page refresh** - No data loss when refreshing the page
+- **Smart loading** - Only fetches new data when cache expires or is empty
+- **Reduced server load** - Prevents unnecessary API calls
+
 ### Frontend Development
 ```bash
 npm run dev

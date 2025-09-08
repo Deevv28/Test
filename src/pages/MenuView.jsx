@@ -22,8 +22,13 @@ const MenuView = () => {
 
   React.useEffect(() => {
     if (id) {
-      loadRestaurant();
-      loadMenu();
+      // Only load if we don't have the data already
+      if (!restaurant) {
+        loadRestaurant();
+      }
+      if (menuItems.length === 0) {
+        loadMenu();
+      }
     }
   }, [id]);
 
