@@ -11,6 +11,7 @@ function App() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [tables, setTables] = useState([]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
+  const [tablesLoaded, setTablesLoaded] = useState(false);
   const navigate = useNavigate();
   const { id } = useParams();
   const { apiCall } = useAuth();
@@ -23,18 +24,27 @@ function App() {
 
   // Load tables from backend
   React.useEffect(() => {
-    if (id && tables.length === 0) {
+    let mounted = true;
+    
+    if (id && !tablesLoaded && mounted) {
       loadTables();
     }
+    
+    return () => {
+      mounted = false;
+    };
   }, [id]);
 
   const loadTables = async () => {
+    if (isLoadingPhotos) return; // Prevent multiple simultaneous calls
+    
     setIsLoadingPhotos(true);
     try {
       const result = await apiCall(`/restaurants/${id}/tables`);
       
       if (result.success) {
         setTables(result.data);
+        setTablesLoaded(true);
         console.log('✅ Tables loaded for booking view:', result.data.length);
       }
     } catch (error) {

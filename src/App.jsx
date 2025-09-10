@@ -22,7 +22,7 @@ import { useAuth } from './context/AuthContext';
 
 // App content component that uses auth context
 const AppContent = () => {
-  const { authChecked } = useAuth();
+  const { authChecked, isAuthenticated, role } = useAuth();
 
   // Show loading screen only while checking authentication
   if (!authChecked) {
@@ -50,7 +50,13 @@ const AppContent = () => {
       <div className="min-h-screen bg-gray-50">
         <DataPersistence />
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={
+            isAuthenticated ? (
+              role === 'admin' ? <Navigate to="/admin" replace /> :
+              role === 'superadmin' ? <Navigate to="/super-admin" replace /> :
+              <Navigate to="/dashboard" replace />
+            ) : <HomePage />
+          } />
           <Route path="/login" element={<CustomerLogin />} />
           <Route path="/signup" element={<CustomerSignup />} />
           <Route path="/admin-dashboard-secret-portal-2025" element={<AdminLogin />} />

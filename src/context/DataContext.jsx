@@ -24,6 +24,11 @@ export const DataProvider = ({ children }) => {
     bookings: 0
   });
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [loadingStates, setLoadingStates] = useState({
+    restaurants: false,
+    orders: false,
+    bookings: false
+  });
   const { apiCall, isAuthenticated, authChecked, token } = useAuth();
   
   // Cache duration in milliseconds (5 minutes)
@@ -31,7 +36,11 @@ export const DataProvider = ({ children }) => {
 
   // Load data from localStorage on mount
   useEffect(() => {
+    let mounted = true;
+    
     const loadStoredData = () => {
+      if (!mounted) return;
+      
       try {
         const storedRestaurants = localStorage.getItem('restaurants');
         const storedOrders = localStorage.getItem('orders');
@@ -66,6 +75,10 @@ export const DataProvider = ({ children }) => {
     };
     
     loadStoredData();
+    
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Save data to localStorage whenever it changes
@@ -91,6 +104,12 @@ export const DataProvider = ({ children }) => {
   
   // Load restaurants from API
   const loadRestaurants = async (force = false) => {
+    // Prevent multiple simultaneous calls
+    if (loadingStates.restaurants && !force) {
+      console.log('📦 Restaurants already loading, skipping duplicate call');
+      return;
+    }
+    
     // Check if we need to fetch (cache is expired or force refresh)
     const now = Date.now();
     const shouldFetch = force || 
@@ -103,6 +122,7 @@ export const DataProvider = ({ children }) => {
       return;
     }
     
+    setLoadingStates(prev => ({ ...prev, restaurants: true }));
     setIsLoading(true);
     try {
       const result = await apiCall('/restaurants');
@@ -166,14 +186,21 @@ export const DataProvider = ({ children }) => {
       }
     } finally {
       setIsLoading(false);
+      setLoadingStates(prev => ({ ...prev, restaurants: false }));
     }
   };
 
-  // Load restaurants only once when authentication is ready
+  // Load restaurants only once when authentication is ready and not already loaded
   useEffect(() => {
-    if (authChecked) {
+    let mounted = true;
+    
+    if (authChecked && mounted && !dataLoaded && !loadingStates.restaurants) {
       loadRestaurants();
     }
+    
+    return () => {
+      mounted = false;
+    };
   }, [authChecked]);
   
   // Force reload restaurants data
@@ -222,6 +249,12 @@ export const DataProvider = ({ children }) => {
   const loadUserOrders = async (force = false) => {
     if (!isAuthenticated || !token) return;
     
+    // Prevent multiple simultaneous calls
+    if (loadingStates.orders && !force) {
+      console.log('📦 Orders already loading, skipping duplicate call');
+      return;
+    }
+    
     const now = Date.now();
     const shouldFetch = force || (now - lastFetch.orders) > CACHE_DURATION;
     
@@ -230,6 +263,7 @@ export const DataProvider = ({ children }) => {
       return;
     }
     
+    setLoadingStates(prev => ({ ...prev, orders: true }));
     try {
       const result = await apiCall('/orders');
       if (result && result.success) {
@@ -239,11 +273,19 @@ export const DataProvider = ({ children }) => {
       }
     } catch (error) {
       console.warn('⚠️ Failed to load orders:', error.message);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, orders: false }));
     }
   };
 
   const loadUserBookings = async (force = false) => {
     if (!isAuthenticated || !token) return;
+    
+    // Prevent multiple simultaneous calls
+    if (loadingStates.bookings && !force) {
+      console.log('📦 Bookings already loading, skipping duplicate call');
+      return;
+    }
     
     const now = Date.now();
     const shouldFetch = force || (now - lastFetch.bookings) > CACHE_DURATION;
@@ -253,6 +295,7 @@ export const DataProvider = ({ children }) => {
       return;
     }
     
+    setLoadingStates(prev => ({ ...prev, bookings: true }));
     try {
       const result = await apiCall('/bookings');
       if (result && result.success) {
@@ -262,6 +305,8 @@ export const DataProvider = ({ children }) => {
       }
     } catch (error) {
       console.warn('⚠️ Failed to load bookings:', error.message);
+    } finally {
+      setLoadingStates(prev => ({ ...prev, bookings: false }));
     }
   };
 

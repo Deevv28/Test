@@ -7,10 +7,11 @@ const HomePage = () => {
   const navigate = useNavigate();
   const { isAuthenticated, role } = useAuth();
 
-  // Only redirect if user is on homepage and authenticated
+  // Redirect authenticated users to their appropriate dashboard
   React.useEffect(() => {
-    // Only redirect from homepage, not from other pages
-    if (isAuthenticated && window.location.pathname === '/') {
+    let mounted = true;
+    
+    if (isAuthenticated && mounted) {
       if (role === 'admin') {
         navigate('/admin', { replace: true });
       } else if (role === 'superadmin') {
@@ -19,7 +20,23 @@ const HomePage = () => {
         navigate('/dashboard', { replace: true });
       }
     }
+    
+    return () => {
+      mounted = false;
+    };
   }, [isAuthenticated, role, navigate]);
+
+  // Don't render homepage content if user is authenticated (they'll be redirected)
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white">Redirecting to dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">

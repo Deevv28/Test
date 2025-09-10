@@ -156,9 +156,15 @@ In development mode, you may notice API calls appearing twice in the backend log
 
 - **Only happens in development** - Production builds run components once
 - **Is intentional React behavior** - Helps catch bugs and side effects
-- **Can be safely ignored** - The duplicate calls don't affect functionality
-- **Is prevented by caching** - Our app implements smart caching to minimize actual network requests
+- **Has been mitigated** - Our app now implements smart caching and duplicate call prevention
+- **Can be safely ignored in development** - The duplicate calls don't affect functionality
 
+**Fixed in this version:**
+- Added API call deduplication to prevent multiple identical requests
+- Implemented proper loading states to prevent race conditions
+- Added session-based caching for short-term duplicate prevention
+- Enhanced data persistence to survive page refreshes
+- Improved authentication flow with proper redirects
 To verify this won't happen in production:
 1. Run `npm run build` to create a production build
 2. Run `npm run preview` to test the production build
@@ -171,6 +177,8 @@ The application now includes smart data persistence:
 - **Survives page refresh** - No data loss when refreshing the page
 - **Smart loading** - Only fetches new data when cache expires or is empty
 - **Reduced server load** - Prevents unnecessary API calls
+- **Duplicate call prevention** - Intelligent deduplication of API requests
+- **Proper authentication flow** - Users are redirected to login first
 
 ### Frontend Development
 ```bash

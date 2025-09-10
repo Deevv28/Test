@@ -30,12 +30,23 @@ const AdminOverview = () => {
   });
   const [recentTables, setRecentTables] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   useEffect(() => {
-    loadDashboardData();
+    let mounted = true;
+    
+    if (!dataLoaded && mounted) {
+      loadDashboardData();
+    }
+    
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const loadDashboardData = async () => {
+    if (isLoading && dataLoaded) return; // Prevent multiple calls
+    
     setIsLoading(true);
     try {
       const response = await apiCall('/admin/dashboard');
@@ -51,6 +62,7 @@ const AdminOverview = () => {
 
       // Refresh restaurants data in global context
       loadRestaurants();
+      setDataLoaded(true);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
       // Set default data for demo
@@ -68,6 +80,7 @@ const AdminOverview = () => {
         recentBookings: []
       });
       setRecentTables([]);
+      setDataLoaded(true);
     } finally {
       setIsLoading(false);
     }

@@ -35,6 +35,7 @@ const AdminMenu = () => {
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedTable, setSelectedTable] = useState(null);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [newTable, setNewTable] = useState({
     table_number: '',
     capacity: 2,
@@ -54,8 +55,16 @@ const AdminMenu = () => {
   });
 
   useEffect(() => {
-    loadMenuItems();
-    loadTables();
+    let mounted = true;
+    
+    if (!dataLoaded && mounted) {
+      loadMenuItems();
+      loadTables();
+    }
+    
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -63,7 +72,8 @@ const AdminMenu = () => {
   }, [menuItems, searchTerm, categoryFilter]);
 
   const loadMenuItems = async () => {
-    setIsLoading(true);
+    if (isLoading) return; // Prevent multiple calls
+    
     try {
       const response = await apiCall('/admin/menu');
       if (response.success) {
@@ -75,8 +85,6 @@ const AdminMenu = () => {
       addNotification('Failed to load menu items', 'error');
       // Set empty array for demo
       setMenuItems([]);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -96,6 +104,7 @@ const AdminMenu = () => {
       setTables([]);
     } finally {
       setIsLoading(false);
+      setDataLoaded(true);
     }
   };
 

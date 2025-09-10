@@ -15,43 +15,58 @@ const MenuView = () => {
   const [menuItems, setMenuItems] = useState([]);
   const [isLoadingMenu, setIsLoadingMenu] = useState(true);
   const [restaurant, setRestaurant] = useState(null);
+  const [menuLoaded, setMenuLoaded] = useState(false);
+  const [restaurantLoaded, setRestaurantLoaded] = useState(false);
   
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedDietary, setSelectedDietary] = useState('all');
   const [itemQuantities, setItemQuantities] = useState({});
 
   React.useEffect(() => {
+    let mounted = true;
+    
     if (id) {
       // Only load if we don't have the data already
-      if (!restaurant) {
+      if (!restaurant && !restaurantLoaded && mounted) {
         loadRestaurant();
       }
-      if (menuItems.length === 0) {
+      if (menuItems.length === 0 && !menuLoaded && mounted) {
         loadMenu();
       }
     }
+    
+    return () => {
+      mounted = false;
+    };
   }, [id]);
 
   const loadRestaurant = async () => {
+    if (restaurantLoaded) return; // Prevent multiple calls
+    
     try {
       const result = await apiCall(`/restaurants/${id}`);
       if (result.success) {
         setRestaurant(result.data);
+        setRestaurantLoaded(true);
       }
     } catch (error) {
       console.error('Failed to load restaurant:', error);
       // Fallback to local data
       const localRestaurant = restaurants.find(r => r.id === parseInt(id));
       setRestaurant(localRestaurant);
+      setRestaurantLoaded(true);
     }
   };
 
   const loadMenu = async () => {
+    if (isLoadingMenu && menuLoaded) return; // Prevent multiple calls
+    
     setIsLoadingMenu(true);
     try {
       const result = await apiCall(`/restaurants/${id}/menu`);
       if (result.success) {
         setMenuItems(result.data);
+        setMenuLoaded(true);
         console.log('✅ Menu items loaded:', result.data.length);
       }
     } catch (error) {

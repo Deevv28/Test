@@ -8,19 +8,35 @@ import NotificationToast from '../components/NotificationToast';
 
 const CustomerDashboard = () => {
   const { user, logout } = useAuth();
-  const { restaurants, isLoading: restaurantsLoading, loadRestaurants, loadUserOrders, loadUserBookings } = useData();
+  const { restaurants, isLoading: restaurantsLoading, loadRestaurants, loadUserOrders, loadUserBookings, dataLoaded } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCuisine, setSelectedCuisine] = useState('all');
   const [favorites, setFavorites] = useState([]);
 
   // Load data only once when component mounts
   React.useEffect(() => {
+    let mounted = true;
+    
     // Only load if user is authenticated and data isn't already loaded
-    if (user && !dataLoaded) {
-      loadUserOrders();
-      loadUserBookings();
-      loadRestaurants();
+    if (user && !dataLoaded && mounted) {
+      // Use a small delay to prevent race conditions with StrictMode
+      const timer = setTimeout(() => {
+        if (mounted) {
+          loadUserOrders();
+          loadUserBookings();
+          loadRestaurants();
+        }
+      }, 50);
+      
+      return () => {
+        clearTimeout(timer);
+        mounted = false;
+      };
     }
+    
+    return () => {
+      mounted = false;
+    };
   }, [user, dataLoaded]);
 
   const cuisines = ['all', 'Fine Dining', 'Japanese', 'Italian', 'Indian', 'Mexican'];

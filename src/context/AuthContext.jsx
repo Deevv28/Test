@@ -20,10 +20,16 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [apiCallsInProgress, setApiCallsInProgress] = useState(new Set());
 
   useEffect(() => {
     // Check for stored authentication on app load
+    // Use a flag to prevent multiple executions in StrictMode
+    let mounted = true;
+    
     const checkStoredAuth = () => {
+      if (!mounted) return;
+      
       try {
         const storedUser = localStorage.getItem('user');
         const storedRole = localStorage.getItem('role');
@@ -66,11 +72,17 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('role');
         localStorage.removeItem('token');
       } finally {
-        setAuthChecked(true);
+        if (mounted) {
+          setAuthChecked(true);
+        }
       }
     };
     
     checkStoredAuth();
+    
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const login = (userData, userRole, authToken) => {
@@ -98,10 +110,37 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('orders');
     localStorage.removeItem('bookings');
     localStorage.removeItem('lastFetch');
+    // Clear API calls in progress
+    setApiCallsInProgress(new Set());
   };
 
   // API helper function
   const apiCall = async (endpoint, options = {}) => {
+    // Create a unique key for this API call to prevent duplicates
+    const callKey = `${endpoint}-${JSON.stringify(options)}`;
+    
+    // If this exact call is already in progress, return a promise that resolves when it's done
+    if (apiCallsInProgress.has(callKey)) {
+      console.log(`⏳ API call already in progress, waiting: ${endpoint}`);
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (!apiCallsInProgress.has(callKey)) {
+            clearInterval(checkInterval);
+            // Try to get cached result
+            const cachedResult = sessionStorage.getItem(`api-cache-${callKey}`);
+            if (cachedResult) {
+              resolve(JSON.parse(cachedResult));
+            } else {
+              resolve({ success: false, message: 'Call completed but no cached result' });
+            }
+          }
+        }, 100);
+      });
+    }
+    
+    // Mark this call as in progress
+    setApiCallsInProgress(prev => new Set([...prev, callKey]));
+    
     setIsLoading(true);
     const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
     const config = {
@@ -133,6 +172,15 @@ export const AuthProvider = ({ children }) => {
       }
       
       const data = await response.json();
+      
+      // Cache successful results for a short time to prevent duplicate calls
+      if (data.success) {
+        sessionStorage.setItem(`api-cache-${callKey}`, JSON.stringify(data));
+        setTimeout(() => {
+          sessionStorage.removeItem(`api-cache-${callKey}`);
+        }, 5000); // Cache for 5 seconds
+      }
+      
       // Reduce console noise - only log important API calls
       if (!endpoint.includes('/restaurants') || endpoint.includes('/admin/')) {
         console.log(`✅ API call successful: ${endpoint}`, data.success ? 'Success' : 'Failed');
@@ -152,6 +200,12 @@ export const AuthProvider = ({ children }) => {
       throw error;
     } finally {
       setIsLoading(false);
+      // Remove this call from in-progress set
+      setApiCallsInProgress(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(callKey);
+        return newSet;
+      });
     }
   };
 

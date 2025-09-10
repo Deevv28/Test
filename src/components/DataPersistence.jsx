@@ -12,15 +12,26 @@ const DataPersistence = () => {
 
   // Load user-specific data only once when authenticated
   useEffect(() => {
-    if (isAuthenticated && authChecked && !dataLoaded) {
+    let mounted = true;
+    
+    if (isAuthenticated && authChecked && !dataLoaded && mounted) {
       // Load user data with a small delay to prevent race conditions
       const timer = setTimeout(() => {
-        loadUserOrders();
-        loadUserBookings();
+        if (mounted) {
+          loadUserOrders();
+          loadUserBookings();
+        }
       }, 100);
       
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        mounted = false;
+      };
     }
+    
+    return () => {
+      mounted = false;
+    };
   }, [isAuthenticated, authChecked, dataLoaded]);
 
   // This component doesn't render anything
