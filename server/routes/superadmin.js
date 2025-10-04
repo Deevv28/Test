@@ -548,51 +548,64 @@ router.post('/notifications/send', [
         const { title, message, type, recipients } = req.body;
 
         // Get target users based on recipients
-        // Note: Notifications table references login_users, which only contains customers
-        // Admins and superadmins are in the users table and cannot receive notifications through this system
         let targetUsers = [];
+        let userType = 'customer';
 
-        if (recipients === 'all' || recipients === 'customers') {
+        if (recipients === 'all') {
             // Get all customer users from login_users table
             const customers = await db.all(`
                 SELECT id FROM login_users WHERE role = 'customer' AND is_active = 1
             `);
-            targetUsers = targetUsers.concat(customers.map(u => u.id));
-        }
+            targetUsers = targetUsers.concat(customers.map(u => ({ id: u.id, type: 'customer' })));
 
-        if (recipients === 'admins' || recipients === 'superadmins') {
-            // Admins and superadmins cannot receive notifications because they are in the users table,
-            // not login_users table. The notifications foreign key references login_users.
-            // This is a known limitation of the current system design.
-            console.log(`⚠️  Warning: Cannot send notifications to ${recipients} - they are not in the login_users table`);
+            // Get all admin users from users table
+            const admins = await db.all(`
+                SELECT id FROM users WHERE role = 'admin' AND is_active = 1
+            `);
+            targetUsers = targetUsers.concat(admins.map(u => ({ id: u.id, type: 'admin' })));
+        } else if (recipients === 'customers') {
+            // Get all customer users from login_users table
+            const customers = await db.all(`
+                SELECT id FROM login_users WHERE role = 'customer' AND is_active = 1
+            `);
+            targetUsers = customers.map(u => ({ id: u.id, type: 'customer' }));
+        } else if (recipients === 'admins') {
+            // Get all admin users from users table
+            const admins = await db.all(`
+                SELECT id FROM users WHERE role = 'admin' AND is_active = 1
+            `);
+            targetUsers = admins.map(u => ({ id: u.id, type: 'admin' }));
+        } else if (recipients === 'superadmins') {
+            // Get all superadmin users from users table
+            const superadmins = await db.all(`
+                SELECT id FROM users WHERE role = 'superadmin' AND is_active = 1
+            `);
+            targetUsers = superadmins.map(u => ({ id: u.id, type: 'superadmin' }));
         }
-
-        // Remove duplicates
-        targetUsers = [...new Set(targetUsers)];
 
         if (targetUsers.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'No valid recipients found. Only customers can receive notifications in the current system.'
+                message: 'No valid recipients found.'
             });
         }
 
         // Create notifications for all target users
-        for (const userId of targetUsers) {
+        for (const user of targetUsers) {
             await db.run(`
-                INSERT INTO notifications (user_id, title, message, type, is_read)
-                VALUES (?, ?, ?, ?, 0)
-            `, [userId, title, message, type]);
+                INSERT INTO notifications (user_id, user_type, title, message, type, is_read)
+                VALUES (?, ?, ?, ?, ?, 0)
+            `, [user.id, user.type, title, message, type]);
         }
 
         console.log(`✅ Notification sent to ${targetUsers.length} users by Super Admin ${req.user.id}`);
 
         res.status(201).json({
             success: true,
-            message: `Notification sent to ${targetUsers.length} ${recipients === 'all' ? 'customer' : recipients}(s)`,
+            message: `Notification sent to ${targetUsers.length} ${recipients}`,
             data: {
                 recipients_count: targetUsers.length,
-                recipients: recipients === 'all' || recipients === 'customers' ? 'customers' : recipients,
+                recipients: recipients,
                 title
             }
         });

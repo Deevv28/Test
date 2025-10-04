@@ -315,7 +315,7 @@ router.get('/notifications', authenticateToken, authorizeRole(['customer']), asy
             LEFT JOIN restaurants r ON n.restaurant_id = r.id
             LEFT JOIN bookings b ON n.booking_id = b.id
             LEFT JOIN orders o ON n.order_id = o.id
-            WHERE n.user_id = ?
+            WHERE n.user_id = ? AND n.user_type = 'customer'
         `;
 
         const queryParams = [userId];

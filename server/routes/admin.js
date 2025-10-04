@@ -24,6 +24,65 @@ router.use((req, res, next) => {
     next();
 });
 
+// GET /api/admin/notifications/unread-count - Get unread notification count for admin
+router.get('/notifications/unread-count', async (req, res) => {
+    try {
+        const restaurantId = req.user.restaurant_id;
+        const adminUserId = req.user.id;
+
+        const result = await db.get(`
+            SELECT COUNT(*) as count
+            FROM notifications
+            WHERE user_type = 'admin'
+            AND (user_id = ? OR (restaurant_id = ? OR restaurant_id IS NULL))
+            AND is_read = 0
+        `, [adminUserId, restaurantId]);
+
+        res.status(200).json({
+            success: true,
+            message: 'Unread notification count retrieved',
+            data: {
+                count: result.count || 0
+            }
+        });
+
+    } catch (error) {
+        console.error('Get admin unread count error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching unread count'
+        });
+    }
+});
+
+// PUT /api/admin/notifications/mark-all-read - Mark all admin notifications as read
+router.put('/notifications/mark-all-read', async (req, res) => {
+    try {
+        const restaurantId = req.user.restaurant_id;
+        const adminUserId = req.user.id;
+
+        await db.run(`
+            UPDATE notifications
+            SET is_read = 1
+            WHERE user_type = 'admin'
+            AND (user_id = ? OR (restaurant_id = ? OR restaurant_id IS NULL))
+            AND is_read = 0
+        `, [adminUserId, restaurantId]);
+
+        res.status(200).json({
+            success: true,
+            message: 'All notifications marked as read'
+        });
+
+    } catch (error) {
+        console.error('Mark all admin notifications as read error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while marking all notifications as read'
+        });
+    }
+});
+
 // GET /api/admin/notifications - Get restaurant notifications
 router.get('/notifications', async (req, res) => {
     try {
@@ -32,6 +91,8 @@ router.get('/notifications', async (req, res) => {
 
         // Get all notifications relevant to this restaurant's admin
         // This includes: system-wide notifications from super admin + restaurant-specific notifications
+        const adminUserId = req.user.id;
+
         const notifications = await db.all(`
             SELECT
                 n.id, n.title, n.message, n.type, n.is_read as read, n.created_at,
@@ -42,16 +103,11 @@ router.get('/notifications', async (req, res) => {
                 r.name as restaurant_name
             FROM notifications n
             LEFT JOIN restaurants r ON n.restaurant_id = r.id
-            LEFT JOIN login_users lu ON n.user_id = lu.id
-            WHERE (n.restaurant_id = ? OR n.restaurant_id IS NULL)
-            AND (lu.role = 'admin' OR n.user_id IN (
-                SELECT id FROM login_users WHERE role = 'admin' AND id IN (
-                    SELECT id FROM users WHERE restaurant_id = ?
-                )
-            ))
+            WHERE n.user_type = 'admin'
+            AND (n.user_id = ? OR (n.restaurant_id = ? OR n.restaurant_id IS NULL))
             ORDER BY n.created_at DESC
             LIMIT ?
-        `, [restaurantId, restaurantId, parseInt(limit)]);
+        `, [adminUserId, restaurantId, parseInt(limit)]);
 
         res.status(200).json({
             success: true,
@@ -76,18 +132,15 @@ router.put('/notifications/:id/read', async (req, res) => {
         const restaurantId = req.user.restaurant_id;
 
         // Verify notification exists and is accessible by this admin
+        const adminUserId = req.user.id;
+
         const notification = await db.get(`
             SELECT n.id
             FROM notifications n
-            LEFT JOIN login_users lu ON n.user_id = lu.id
             WHERE n.id = ?
-            AND (n.restaurant_id = ? OR n.restaurant_id IS NULL)
-            AND (lu.role = 'admin' OR n.user_id IN (
-                SELECT id FROM login_users WHERE role = 'admin' AND id IN (
-                    SELECT id FROM users WHERE restaurant_id = ?
-                )
-            ))
-        `, [id, restaurantId, restaurantId]);
+            AND n.user_type = 'admin'
+            AND (n.user_id = ? OR (n.restaurant_id = ? OR n.restaurant_id IS NULL))
+        `, [id, adminUserId, restaurantId]);
 
         if (!notification) {
             return res.status(404).json({
@@ -124,18 +177,15 @@ router.delete('/notifications/:id', async (req, res) => {
         const restaurantId = req.user.restaurant_id;
 
         // Verify notification exists and is accessible by this admin
+        const adminUserId = req.user.id;
+
         const notification = await db.get(`
             SELECT n.id
             FROM notifications n
-            LEFT JOIN login_users lu ON n.user_id = lu.id
             WHERE n.id = ?
-            AND (n.restaurant_id = ? OR n.restaurant_id IS NULL)
-            AND (lu.role = 'admin' OR n.user_id IN (
-                SELECT id FROM login_users WHERE role = 'admin' AND id IN (
-                    SELECT id FROM users WHERE restaurant_id = ?
-                )
-            ))
-        `, [id, restaurantId, restaurantId]);
+            AND n.user_type = 'admin'
+            AND (n.user_id = ? OR (n.restaurant_id = ? OR n.restaurant_id IS NULL))
+        `, [id, adminUserId, restaurantId]);
 
         if (!notification) {
             return res.status(404).json({
@@ -1306,8 +1356,8 @@ router.put('/orders/:id/status', [
         };
 
         await db.run(`
-            INSERT INTO notifications (user_id, restaurant_id, order_id, title, message, type, is_read)
-            VALUES (?, ?, ?, ?, ?, ?, 0)
+            INSERT INTO notifications (user_id, user_type, restaurant_id, order_id, title, message, type, is_read)
+            VALUES (?, 'customer', ?, ?, ?, ?, ?, 0)
         `, [
             orderDetails.user_id,
             restaurantId,
@@ -1462,8 +1512,8 @@ router.put('/bookings/:id/status', [
         };
 
         const notificationResult = await db.run(`
-            INSERT INTO notifications (user_id, restaurant_id, booking_id, title, message, type, is_read)
-            VALUES (?, ?, ?, ?, ?, ?, 0)
+            INSERT INTO notifications (user_id, user_type, restaurant_id, booking_id, title, message, type, is_read)
+            VALUES (?, 'customer', ?, ?, ?, ?, ?, 0)
         `, [
             existingBooking.user_id,
             restaurantId,
